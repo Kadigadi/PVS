@@ -2,35 +2,6 @@
 
 #define SWITCH_DELAY 500000
 
-void it_init() 
-{
-    SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource0);
-    EXTI_InitTypeDef exti;  // структура для настроки
-    exti.EXTI_Line = EXTI_Line0;    /// кнопка на линии 0
-    exti.EXTI_Mode = EXTI_Mode_Interrupt;    // прерывание (а не событие)
-    exti.EXTI_Trigger = EXTI_Trigger_Rising;  // срабатываем по переднему фронту импульса
-    exti.EXTI_LineCmd = ENABLE;    /// вкл
- 
-    EXTI_Init(&exti);
- 
-    NVIC_InitTypeDef nvic;
-    nvic.NVIC_IRQChannel = EXTI0_IRQn;  // указываем канал IRQ
-    nvic.NVIC_IRQChannelPreemptionPriority = 2;  // приоритет канала ( 0 (самый приоритетный) - 15)
-    nvic.NVIC_IRQChannelSubPriority = 2;  // приоритет подгруппы
-    nvic.NVIC_IRQChannelCmd = ENABLE;
- 
-    NVIC_Init(&nvic);
-}
-
-void EXTI0_IRQHandler(void)
-{
-     /* нужно проверять состояние линии прерывания  */
-    if (EXTI_GetITStatus(EXTI_Line0) != RESET){
-		button_handler();
-        EXTI_ClearITPendingBit(EXTI_Line0);  // сбрасываем флаг прерывания
-    }
-}
-
 int blink_next(int led)
 {
 	int next_led;
@@ -60,60 +31,12 @@ int blink_next(int led)
 	return next_led;
 }
 
-int blink_prev(int led)
-{
-	int next_led;
-	switch(led)
-	{
-		case 1: 
-			GPIOD->BSRRH = 0xffff;
-			LED1_GPIO_PORT->BSRRL = LED1_PIN;
-			next_led = 4;
-			break;
-		case 2:
-			GPIOD->BSRRH = 0xffff;
-			LED2_GPIO_PORT->BSRRL = LED2_PIN;
-			next_led = led - 1;
-			break;
-		case 3: 
-			GPIOD->BSRRH = 0xffff;
-			LED3_GPIO_PORT->BSRRL = LED3_PIN;
-			next_led = led - 1;
-			break;
-		case 4: 
-			GPIOD->BSRRH = 0xffff;
-			LED4_GPIO_PORT->BSRRL = LED4_PIN;
-			next_led = led - 1;
-			break;
-	}
-	return next_led;
-}	
-
-int g_button_state = 0;
-void button_handler()
-{
-	int i;
-	
-	for (i=0; i < SWITCH_DELAY/100; i++)
-	{
-	    /* empty cycle */
-	}
-	
-	if (g_button_state)
-	{
-		g_button_state = 0;
-	}
-	else
-	{
-	  g_button_state = 1;	
-	}
-}
-
 typedef enum led_direction_e
 {
   FORWARD,
   REVERSE,
 } led_direction_t;
+
 
 int main(void)
 {
@@ -164,20 +87,28 @@ int main(void)
 	
   GPIOD->BSRRH = 0xffff;
 
-  it_init();
+	RCC->CR|=RCC_CR_HSEON; //Запускаем генератор HSE.
+	while (!(RCC->CR & RCC_CR_HSERDY)) {}; // Ждем готовности
+	RCC->CFGR &=~RCC_CFGR_SW; //Сбрасываем биты
+	RCC->CFGR |= RCC_CFGR_SW_HSE; // Переходим на HSE
   
   while (1)
   {
 	int i;
 	
-	if (g_button_state)
-    //if (GPIO_ReadInputDataBit(WAKEUP_BUTTON_GPIO_PORT, WAKEUP_BUTTON_PIN))
+	next_led = blink_next(next_led);
+	
+    if (GPIO_ReadInputDataBit(WAKEUP_BUTTON_GPIO_PORT, WAKEUP_BUTTON_PIN))
 	{
-		next_led = blink_next(next_led);
+		/* Выбираем HSE как источник системной частоты */
+		RCC_SYSCLKConfig( RCC_SYSCLKSource_HSE);  
+		//RCC->CR|=RCC_CR_HSEON;		
 	}
 	else
 	{
-		next_led = blink_prev(next_led);
+		/* Выбираем HSI как источник системной частоты */
+		RCC_SYSCLKConfig( RCC_SYSCLKSource_HSI);
+		//RCC->CR|=RCC_CR_HSION;
 	}
 	
 	for (i=0; i < SWITCH_DELAY; i++)
